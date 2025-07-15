@@ -2,7 +2,8 @@ import cv2
 from ultralytics import YOLO
 import time
 import datetime
-
+# yolo 1-2 saniye aralıklarla çalışsın, çalıştığında mavi olarak çizdirilsin
+# tespit yapılmadığı süre aralığı boyunca tracker mevcutsa tracker devam etmeli
 def calculate_intersection_over_union(box1, box2):
     x1, y1, w1, h1 = box1
     x2, y2, w2, h2 = box2
