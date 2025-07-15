@@ -2,8 +2,7 @@ import cv2
 from ultralytics import YOLO
 import time
 import datetime
-# yolo 1-2 saniye aralıklarla çalışsın, çalıştığında mavi olarak çizdirilsin
-# tespit yapılmadığı süre aralığı boyunca tracker mevcutsa tracker devam etmeli
+
 def calculate_intersection_over_union(box1, box2):
     x1, y1, w1, h1 = box1
     x2, y2, w2, h2 = box2
@@ -24,70 +23,68 @@ def calculate_intersection_over_union(box1, box2):
     iou = intersection_area / float(box1_area + box2_area - intersection_area)
     return iou
 
-# YOLOv8 modelini yükle
+
 model = YOLO("best_h.pt", verbose=False).to("cuda:0")
+cap = cv2.VideoCapture(0)
 
-# Video kaynağı
-cap = cv2.VideoCapture("udp://127.0.0.1:5001")
-
-# Takip
 tracker = None
 tracking = False
-matching_threshold = 0.3
-last_yolo_time = 0
-yolo_interval = 1.0  # saniye
-current_time = time.time()
+matching_threshold = 0.3  #ıou eşiği
+last_yolo_time = time.time()
+yolo_interval = 1.0  # YOLO kaç saniyede bir çalıştırılsın
 
-# Sayaç için başlangıç zamanı
 tracker_start_time = None
 start_time = time.time()
+
+bbox_tracker = None  
+
 while True:
     ret, frame = cap.read()
     if not ret:
         break
 
-    # Eğer takip ediyorsak
+    # Tracker sürekli çalışır
     if tracking:
         success, bbox_tracker = tracker.update(frame)
-
         if success:
             x, y, w, h = map(int, bbox_tracker)
-
-            # Geçen süreyi hesapla
             elapsed_time = time.time() - tracker_start_time
             elapsed_text = f"{elapsed_time:.1f} sec"
-
-            # Kutu ve sayaç çiz
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(frame, elapsed_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
+            cv2.putText(frame, elapsed_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
         else:
-            tracking = False  # Takip başarısızsa YOLO çalışacak
+            tracking = False
 
-    # HER ZAMAN YOLO'YU ÇALIŞTIR
-    results = model(source=frame, conf=0.4, verbose=False)
-    boxes = results[0].boxes.xyxy.cpu().numpy() if results and results[0].boxes.xyxy is not None else []
+    # YOLO belirlenen aralıkta çalışır
+    current_time = time.time()
+    if current_time - last_yolo_time >= yolo_interval:
+        results = model(source=frame, conf=0.3, verbose=False)
+        last_yolo_time = current_time
 
-    # Eğer kutu bulunduysa ve takip yoksa ya da tracker başarısız olduysa:
-    if len(boxes) > 0:
-        x1, y1, x2, y2 = boxes[0]
-        bbox_yolo = (x1, y1, x2 - x1, y2 - y1)
-        x, y, w, h = map(int, bbox_yolo)
+        boxes = results[0].boxes.xyxy.cpu().numpy() if results and results[0].boxes.xyxy is not None else []
 
-        # Takipçi yoksa veya aktif değilse yeni tracker başlat
-        if not tracking:
-            tracker = cv2.legacy.TrackerKCF_create()
-            tracker.init(frame, bbox_yolo)
-            tracking = True
+        if len(boxes) > 0:
+            x1, y1, x2, y2 = boxes[0]
+            bbox_yolo = (x1, y1, x2 - x1, y2 - y1)
+            x, y, w, h = map(int, bbox_yolo)
 
-            # Sayaç başlat (tracker init edildiğinde)
-            tracker_start_time = time.time()
+            iou = 0
+            if bbox_tracker is not None:
+                iou = calculate_intersection_over_union(bbox_yolo, bbox_tracker)
+                # print(f"IoU: {iou:.2f}")
 
-        # Her durumda kutuyu çiz (boşluk doldurma etkisi)
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
-        cv2.putText(frame, "", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
-        
-    # fps hesabı    
+            # IoU düşükse veya takip yoksa yeni takip başlatılır
+            if (iou < matching_threshold) or not tracking:
+                tracker = cv2.legacy.TrackerKCF_create()
+                tracker.init(frame, bbox_yolo)
+                tracking = True
+                tracker_start_time = time.time()
+                bbox_tracker = bbox_yolo
+
+            # Yeni bulunan YOLO kutusu (mavi olarak çizilir)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
+            cv2.putText(frame, "", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+
     gecen_sure = time.time() - start_time
     fps_adjust = max(0, (1 / 15) - gecen_sure)
     time.sleep(fps_adjust)
@@ -95,7 +92,7 @@ while True:
     timestamp = now.strftime("%M:%S.") + f"{int(now.microsecond / 1000):03d}"
     print(f"[{timestamp}] FPS: {round(1 / (time.time() - start_time))}")
     start_time = time.time()
-    # Görüntü göster
+
     cv2.imshow("YOLO + Tracker", frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
