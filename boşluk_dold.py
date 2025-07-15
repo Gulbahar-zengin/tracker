@@ -25,13 +25,15 @@ def calculate_intersection_over_union(box1, box2):
 
 
 model = YOLO("best_h.pt", verbose=False).to("cuda:0")
-cap = cv2.VideoCapture(0)
+ffmpeg="udp://127.0.0.1:5001"
+cap = cv2.VideoCapture(ffmpeg)
 
 tracker = None
 tracking = False
 matching_threshold = 0.3  #ıou eşiği
 last_yolo_time = time.time()
 yolo_interval = 1.0  # YOLO kaç saniyede bir çalıştırılsın
+
 
 tracker_start_time = None
 start_time = time.time()
@@ -54,11 +56,12 @@ while True:
             cv2.putText(frame, elapsed_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
         else:
             tracking = False
+            last_yolo_time= 0
 
     # YOLO belirlenen aralıkta çalışır
     current_time = time.time()
     if current_time - last_yolo_time >= yolo_interval:
-        results = model(source=frame, conf=0.3, verbose=False)
+        results = model(source=frame, conf=0.4, verbose=False)
         last_yolo_time = current_time
 
         boxes = results[0].boxes.xyxy.cpu().numpy() if results and results[0].boxes.xyxy is not None else []
@@ -71,7 +74,7 @@ while True:
             iou = 0
             if bbox_tracker is not None:
                 iou = calculate_intersection_over_union(bbox_yolo, bbox_tracker)
-                # print(f"IoU: {iou:.2f}")
+                print(f"IoU: {iou:.2f}")
 
             # IoU düşükse veya takip yoksa yeni takip başlatılır
             if (iou < matching_threshold) or not tracking:
