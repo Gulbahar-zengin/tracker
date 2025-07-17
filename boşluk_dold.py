@@ -14,8 +14,8 @@ def calculate_intersection_over_union(box1, box2):
     xB = min(x1_2, x2_2)
     yB = min(y1_2, y2_2)
 
-    intersection_width = max(0, xB - xA )
-    intersection_height = max(0, yB - yA)
+    intersection_width = max(0, xB - xA+1)
+    intersection_height = max(0, yB - yA+1)
     intersection_area = intersection_width * intersection_height
     box1_area = w1 * h1
     box2_area = w2 * h2
@@ -26,14 +26,13 @@ def calculate_intersection_over_union(box1, box2):
 
 model = YOLO(r"C:\Users\Zengin\Desktop\Gökbörü\2024-25 Savaşan iha\takip_goruntu isleme\best_h.pt", verbose=False).to("cuda:0")
 ffmpeg="udp://127.0.0.1:5001"
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(ffmpeg)
 
 tracker = None
 tracking = False
-matching_threshold = 0.1  #ıou eşiği
+matching_threshold = 0.4  #ıou eşiği
 last_yolo_time = time.time()
-# yolo_interval = 1.0   #YOLO kaç saniyede bir çalıştırılsın
-yolo_interval_frame=30
+yolo_interval_frame=1
 frame_counter=0
 frame_fps=0
 
@@ -53,6 +52,8 @@ while True:
         success, bbox_tracker = tracker.update(frame)
         if success:
             x, y, w, h = map(int, bbox_tracker)
+            center_x = x + w // 2
+            center_y = y + h // 2
             elapsed_time = time.time() - tracker_start_time
             elapsed_text = f"{elapsed_time:.1f} sec"
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
@@ -67,9 +68,9 @@ while True:
     if current_time - last_yolo_time >= yolo_interval:
     """
     if frame_counter >= yolo_interval_frame:
-        results = model.predict(source=frame, conf=0.4, verbose=False)
+        results = model(source=frame, conf=0.4, verbose=False)
         frame_counter = 0 
-    #     last_yolo_time = current_time
+  
 
         boxes = results[0].boxes.xyxy.cpu().numpy() if results and results[0].boxes.xyxy is not None else []
 
